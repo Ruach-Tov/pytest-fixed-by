@@ -22,7 +22,8 @@
 
           propagatedBuildInputs = with pkgs.python3Packages; [ pytest ];
 
-          nativeCheckInputs = with pkgs.python3Packages; [ pytestCheckHook ];
+          nativeCheckInputs = with pkgs.python3Packages; [ pytestCheckHook ]
+            ++ [ pkgs.git ];
 
           pythonImportsCheck = [ "pytest_fixed_by" ];
 

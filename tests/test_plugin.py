@@ -552,14 +552,21 @@ def _test_env(repo: Path) -> dict[str, str]:
 
 # When pip-installed, the pytest11 entry point auto-loads the plugin.
 # When running from source (PYTHONPATH=src), we need -p to load it explicitly.
-# Detect which case we're in by checking if the entry point is registered.
-try:
-    from importlib.metadata import entry_points
-    _installed = any(
-        ep.name == "fixed_by"
-        for ep in entry_points().get("pytest11", [])
+# We detect installation by trying to import and checking for the entry point marker.
+def _plugin_args() -> list[str]:
+    """Return [] if plugin auto-loads via entry point, else explicit -p flag."""
+    import subprocess, sys
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import pytest_fixed_by; "
+         "from importlib.metadata import entry_points; "
+         "eps = entry_points(); "
+         "pts = eps.select(group='pytest11') if hasattr(eps, 'select') else eps.get('pytest11', []); "
+         "print('yes' if any(e.name == 'fixed_by' for e in pts) else 'no')"],
+        capture_output=True, text=True, timeout=10,
     )
-except Exception:
-    _installed = False
+    if r.returncode == 0 and "yes" in r.stdout:
+        return []
+    return ["-p", "pytest_fixed_by.plugin"]
 
-_PLUGIN_ARGS = [] if _installed else ["-p", "pytest_fixed_by.plugin"]
+_PLUGIN_ARGS = _plugin_args()
