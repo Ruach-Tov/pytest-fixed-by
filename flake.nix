@@ -1,3 +1,11 @@
+# Usage in NixOS configuration.nix:
+#   1. Add to flake inputs:
+#        pytest-fixed-by.url = "github:Ruach-Tov/pytest-fixed-by";
+#   2. In your Python environment:
+#        (python3.withPackages (ps: [
+#          inputs.pytest-fixed-by.packages.${system}.default
+#          ps.pytest
+#        ]))
 {
   description = "pytest-fixed-by — Prove your regression test catches the regression";
 
@@ -44,18 +52,6 @@
         packages = {
           default = pytest-fixed-by;
           pytest-fixed-by = pytest-fixed-by;
-        };
-
-        # For NixOS overlay use:
-        #   inputs.pytest-fixed-by.url = "github:Ruach-Tov/pytest-fixed-by";
-        #   Then in configuration.nix python3.withPackages:
-        #     inputs.pytest-fixed-by.packages.${system}.default
-        overlays.default = final: prev: {
-          pythonPackagesExtensions = (prev.pythonPackagesExtensions or [ ]) ++ [
-            (python-final: python-prev: {
-              pytest-fixed-by = pytest-fixed-by;
-            })
-          ];
         };
 
         devShells.default = pkgs.mkShell {
