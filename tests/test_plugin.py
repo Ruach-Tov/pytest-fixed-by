@@ -550,5 +550,16 @@ def _test_env(repo: Path) -> dict[str, str]:
     return env
 
 
-# Extra pytest args to load our plugin when it's not pip-installed
-_PLUGIN_ARGS = ["-p", "pytest_fixed_by.plugin"]
+# When pip-installed, the pytest11 entry point auto-loads the plugin.
+# When running from source (PYTHONPATH=src), we need -p to load it explicitly.
+# Detect which case we're in by checking if the entry point is registered.
+try:
+    from importlib.metadata import entry_points
+    _installed = any(
+        ep.name == "fixed_by"
+        for ep in entry_points().get("pytest11", [])
+    )
+except Exception:
+    _installed = False
+
+_PLUGIN_ARGS = [] if _installed else ["-p", "pytest_fixed_by.plugin"]
