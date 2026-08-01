@@ -97,3 +97,24 @@ The key insight: **today's test against yesterday's code**. The test file comes 
 ## License
 
 MIT
+
+## Limitation: renamed tests cannot be verified
+
+`--verify-historical` copies the *current* test file into a git worktree at the
+annotated commit and runs the test **by name**. If the test has been renamed since
+that commit, the historical worktree has no test by that name and the run reports
+`found no collectors` rather than PASS or FAIL.
+
+The annotation is still correct provenance — it records which commit changed the
+behaviour — but it cannot be machine-checked across a rename.
+
+A fix would be an `as_named=` argument:
+
+```python
+@fixed_by("5bd48a0b3", as_named="test_singleton_crossings_are_supplied_by_heuristic")
+def test_singleton_crossings_are_live_and_mirror_paired():
+    ...
+```
+
+so the verifier knows what the test was called when the commit landed. Not
+implemented.
