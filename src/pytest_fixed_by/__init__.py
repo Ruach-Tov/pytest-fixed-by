@@ -19,6 +19,6 @@ Usage::
     pytest --verify-historical
 """
 
-from pytest_fixed_by.plugin import fixed_by
+from pytest_fixed_by.plugin import fixed_by, xfailed_by
 
-__all__ = ["fixed_by"]
+__all__ = ["fixed_by", "xfailed_by"]

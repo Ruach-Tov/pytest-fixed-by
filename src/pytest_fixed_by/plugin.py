@@ -45,12 +45,21 @@ import pytest
 
 @dataclass
 class _FixInfo:
-    """Metadata linking a test to its fix commit."""
+    """Metadata linking a test to its fix commit.
+
+    ``polarity`` records what the commit did to the test.  ``"fixed"`` means the
+    test began passing at the commit: pre-fix FAIL, post-fix PASS.  ``"xfailed"``
+    means the test deliberately stopped passing there --- a heuristic withdrawn, a
+    rule rejected --- so the expectation is inverted: pre-commit PASS, post-commit
+    FAIL.  Both are provenance, and both are verifiable the same way.
+    """
     commit: str
     files: list[str]
     test_deps: list[str]
     test_func: str = ""
     test_file: str = ""
+    polarity: str = "fixed"
+    reason: str = ""
 
 
 def fixed_by(
@@ -81,8 +90,62 @@ def fixed_by(
             files=list(files),
             test_deps=list(test_deps),
             test_func=func.__name__,
+            polarity="fixed",
         )
         return func  # No wrapping — preserves async/sync nature
+    return decorator
+
+
+def xfailed_by(
+    commit: str,
+    reason: str = "",
+    files: Sequence[str] = (),
+    test_deps: Sequence[str] = (),
+):
+    """Mark a test as DELIBERATELY broken by ``commit``.
+
+    The counterpart to :func:`fixed_by`.  Where ``fixed_by`` records that a test
+    began passing at a commit, ``xfailed_by`` records that it stopped passing
+    there on purpose --- a heuristic withdrawn, a rule rejected, an interface
+    narrowed --- and that the failure is the intended behaviour rather than a
+    regression.
+
+    The verification is the same protocol with the polarity inverted: the test is
+    expected to PASS at the parent commit and FAIL at the commit itself.  A test
+    that fails both sides was not broken by that commit, and the annotation is
+    wrong.
+
+    Under a normal run the test is marked ``xfail(strict=True)``, so it is
+    reported as expected-to-fail and an unexpected PASS is an error --- which is
+    the signal that the withdrawn behaviour has come back.
+
+    Args:
+        commit: Git commit hash that deliberately broke the test.
+        reason: Why the behaviour was withdrawn.  Shown in the xfail report.
+        files: Source files changed (documentation only).
+        test_deps: Extra helper files to copy into the worktree.
+
+    Example::
+
+        @xfailed_by("255e60aa4",
+                    reason="per-orbit symmetry filter; the layer offered here "
+                           "is not mirror-symmetric and was never legal")
+        def test_generator_offers_5_8_at_layer_7():
+            ...
+    """
+    def decorator(func):
+        func._fixed_by = _FixInfo(
+            commit=commit,
+            files=list(files),
+            test_deps=list(test_deps),
+            test_func=func.__name__,
+            polarity="xfailed",
+            reason=reason,
+        )
+        return pytest.mark.xfail(
+            strict=True,
+            reason=f"xfailed_by {commit}" + (f": {reason}" if reason else ""),
+        )(func)
     return decorator
 
 
@@ -148,13 +211,18 @@ def _make_verifier(item, info: _FixInfo):
             fix_commit=info.commit,
             test_deps=info.test_deps,
             repo_root=repo,
+            polarity=getattr(info, "polarity", "fixed"),
         )
         if not result["verified"]:
             parts = []
-            if result["pre_fix"] != "FAIL":
-                parts.append(f"pre-fix should FAIL but was {result['pre_fix']}")
-            if result["post_fix"] != "PASS":
-                parts.append(f"post-fix should PASS but was {result['post_fix']}")
+            xf = getattr(info, "polarity", "fixed") == "xfailed"
+            want_pre, want_post = ("PASS", "FAIL") if xf else ("FAIL", "PASS")
+            if result["pre_fix"] != want_pre:
+                parts.append(
+                    f"pre-commit should {want_pre} but was {result['pre_fix']}")
+            if result["post_fix"] != want_post:
+                parts.append(
+                    f"post-commit should {want_post} but was {result['post_fix']}")
             pytest.fail(
                 f"Historical verification FAILED for {info.commit}: "
                 f"{'; '.join(parts)}\n"
@@ -180,6 +248,7 @@ def _verify_against_history(
     fix_commit: str,
     test_deps: Sequence[str],
     repo_root: Path,
+    polarity: str = "fixed",
 ) -> dict[str, Any]:
     """Run today's test against pre-fix and post-fix code.
 
@@ -226,7 +295,11 @@ def _verify_against_history(
             finally:
                 _worktree_remove(repo_root, wt)
 
-    result["verified"] = result["pre_fix"] == "FAIL" and result["post_fix"] == "PASS"
+    if polarity == "xfailed":
+        # deliberately broken: PASS before the commit, FAIL after it
+        result["verified"] = result["pre_fix"] == "PASS" and result["post_fix"] == "FAIL"
+    else:
+        result["verified"] = result["pre_fix"] == "FAIL" and result["post_fix"] == "PASS"
     return result
 
 
