@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from pytest_fixed_by import fixed_by
+from pytest_fixed_by import fixed_by, xfailed_by
 from pytest_fixed_by.plugin import (
     _FixInfo,
     _find_repo_root,
@@ -570,3 +570,39 @@ def _plugin_args() -> list[str]:
     return ["-p", "pytest_fixed_by.plugin"]
 
 _PLUGIN_ARGS = _plugin_args()
+
+
+class TestMovingRefs:
+    """A moving ref names a different commit at every run.
+
+    Twice on 2026-08-01 an annotation was written as @fixed_by("HEAD") and had to
+    be corrected by hand.  The check it produces is vacuous -- HEAD~1 against HEAD
+    tests whatever happens to be checked out, not the commit that changed the
+    behaviour -- so it is now rejected at decoration time.
+    """
+
+    @pytest.mark.parametrize("ref", ["HEAD", "@", "HEAD~1", "HEAD~10",
+                                     "ORIG_HEAD", "FETCH_HEAD", "MERGE_HEAD"])
+    def test_fixed_by_rejects_moving_refs(self, ref):
+        with pytest.raises(ValueError, match="moving ref"):
+            fixed_by(ref)
+
+    @pytest.mark.parametrize("ref", ["HEAD", "@", "HEAD~3"])
+    def test_xfailed_by_rejects_moving_refs(self, ref):
+        with pytest.raises(ValueError, match="moving ref"):
+            xfailed_by(ref)
+
+    def test_the_error_says_how_to_find_the_real_commit(self):
+        with pytest.raises(ValueError, match="git log"):
+            fixed_by("HEAD")
+
+    @pytest.mark.parametrize("ref", ["f9d608f18", "abc1234", "5bd48a0b3"])
+    def test_real_hashes_are_accepted(self, ref):
+        assert fixed_by(ref) is not None
+        assert xfailed_by(ref) is not None
+
+    def test_a_branch_name_is_not_rejected(self):
+        """Only the well-known moving refs are refused.  A branch name is a
+        judgement call the annotator may have reasons for; this does not police
+        it."""
+        assert fixed_by("main") is not None

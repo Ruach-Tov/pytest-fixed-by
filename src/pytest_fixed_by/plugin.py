@@ -62,6 +62,26 @@ class _FixInfo:
     reason: str = ""
 
 
+_MOVING_REFS = {"HEAD", "@", "ORIG_HEAD", "FETCH_HEAD", "MERGE_HEAD"}
+
+
+def _reject_moving_ref(commit: str, decorator: str) -> None:
+    """A moving ref names a different commit at every run.
+
+    An annotation is a claim about WHICH commit changed a behaviour.  HEAD is
+    whatever happens to be checked out when the verifier runs, so the check it
+    produces is vacuous: the worktree at HEAD~1 and HEAD tests a pair that has
+    nothing to do with the behaviour being recorded.  Rejected at decoration time
+    rather than allowed to produce a confident wrong answer later.
+    """
+    if commit.strip() in _MOVING_REFS or commit.strip().startswith("HEAD~"):
+        raise ValueError(
+            f"@{decorator}({commit!r}) names a moving ref.  Use the hash of the "
+            f"commit that changed the behaviour -- find it with, e.g.,\n"
+            f"    git log --oneline -S '<some text the commit introduced>' -- <file>"
+        )
+
+
 def fixed_by(
     commit: str,
     files: Sequence[str] = (),
@@ -84,6 +104,8 @@ def fixed_by(
         def test_migration_is_nilpotent():
             ...
     """
+    _reject_moving_ref(commit, "fixed_by")
+
     def decorator(func):
         func._fixed_by = _FixInfo(
             commit=commit,
@@ -133,6 +155,8 @@ def xfailed_by(
         def test_generator_offers_5_8_at_layer_7():
             ...
     """
+    _reject_moving_ref(commit, "xfailed_by")
+
     def decorator(func):
         func._fixed_by = _FixInfo(
             commit=commit,
