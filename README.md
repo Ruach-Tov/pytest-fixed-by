@@ -74,6 +74,38 @@ Three things simultaneously:
 - `files`: Not used by the verifier — purely for humans reading the annotation.
 - `test_deps`: Extra test files needed beyond the test file itself. `conftest*.py` and `__init__.py` from the test directory are always included automatically.
 
+## Bonus: `@opcounted` — exact instruction counting
+
+The same repo ships a second verification tool: a decorator that counts the
+exact number of interpreted bytecode instructions a function executes
+(Python 3.12+, via `sys.monitoring`). Wall-clock is noisy; instruction counts
+are deterministic — same input, same count, any machine — so complexity
+claims become reproducible measurements.
+
+```python
+from pytest_fixed_by import opcounted
+
+@opcounted(outdir="/tmp", warm=True)
+def work(n):
+    ...  # pure-Python algorithm
+
+work(20); work(40)
+# each call writes opcount.<PID>.work.<timestamp>.json:
+#   {"method": "work", "instructions": 5986, ...}
+#   {"method": "work", "instructions": 23926, ...}
+# ratio 3.997 -> the O(n^2) law, recovered from two runs, no averaging
+```
+
+Each call writes a JSON record (`opcount.<PID>.<method>.<timestamp>.json`)
+with the exact count, wall time, and provenance. Nested `@opcounted`
+functions each report separately (inner counts included in the outer total,
+nesting flagged). `warm=True` runs one uncounted call first so CPython's
+adaptive specialization settles.
+
+**Honest caveat:** counts cover *interpreted bytecode only* — C-level work
+(numpy, `sorted()`, C extensions) is opaque. For mixed workloads, count
+domain operations; for C-level cost, use hardware counters (`perf stat`).
+
 ## Requirements
 
 - Python ≥ 3.10

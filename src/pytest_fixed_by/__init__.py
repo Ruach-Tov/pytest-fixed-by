@@ -20,5 +20,6 @@ Usage::
 """
 
 from pytest_fixed_by.plugin import fixed_by, xfailed_by
+from pytest_fixed_by.opcount import opcounted
 
-__all__ = ["fixed_by", "xfailed_by"]
+__all__ = ["fixed_by", "xfailed_by", "opcounted"]
